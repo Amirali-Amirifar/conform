@@ -5,62 +5,90 @@ import (
 	"testing"
 
 	"github.com/amirali-amirifar/conform"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
 
+type S struct {
+	Val conform.Int[int8] `json:"val" yaml:"val"`
+}
+
+// newVal builds the spec used across most tests: 1 <= v <= 100.
+func newVal() conform.Int[int8] {
+	return conform.NewInt(conform.Min[int8](1), conform.Max[int8](100))
+}
+
 func TestUnmarshal(t *testing.T) {
-	type S struct {
-		Val conform.Int[int8] `json:"val"`
+	tests := []struct {
+		name      string
+		doc       string
+		unmarshal func([]byte, any) error
+		wantErr   bool
+		want      int8
+	}{
+		{"JSON valid", `{"val":89}`, json.Unmarshal, false, 89},
+		{"JSON out of range", `{"val":120}`, json.Unmarshal, true, 0},
+		{"YAML valid", "val: 89", yaml.Unmarshal, false, 89},
+		{"YAML out of range", "val: 120", yaml.Unmarshal, true, 0},
 	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := require.New(t)
+			cfg := S{Val: newVal()}
+			err := tc.unmarshal([]byte(tc.doc), &cfg)
+			if tc.wantErr {
+				r.Error(err)
+				return
+			}
+			r.NoError(err)
+			r.EqualValues(tc.want, cfg.Val.Value())
+		})
+	}
+}
 
-	t.Run("JSON valid", func(t *testing.T) {
-		cfg := S{Val: conform.NewInt[int8](1, 100)}
-		if err := json.Unmarshal([]byte(`{"val": 89}`), &cfg); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if v := cfg.Val.Value(); v != 89 {
-			t.Fatalf("got %v, want 89", v)
-		}
-	})
+func TestMarshal(t *testing.T) {
+	r := require.New(t)
+	for _, marshal := range []func(any) ([]byte, error){json.Marshal, yaml.Marshal} {
+		cfg := S{Val: newVal()}
+		r.NoError(json.Unmarshal([]byte(`{"val":89}`), &cfg))
+		out, err := marshal(cfg)
+		r.NoError(err)
+		r.Contains(string(out), "89") // value survives round trip
 
-	t.Run("JSON out of range", func(t *testing.T) {
-		cfg := S{Val: conform.NewInt[int8](1, 100)}
-		if err := json.Unmarshal([]byte(`{"val": 120}`), &cfg); err == nil {
-			t.Fatal("expected error for out-of-range value, got nil")
-		}
-	})
+		_, err = marshal(S{Val: newVal()}) // never parsed
+		r.Error(err)
+	}
+}
 
-	t.Run("YAML valid", func(t *testing.T) {
-		cfg := S{Val: conform.NewInt[int8](1, 100)}
+// A zero-value Int (never built via NewInt) must reject unmarshal — the
+// proof-type invariant: only constructed specs can hold a value.
+func TestZeroValueRejected(t *testing.T) {
+	r := require.New(t)
+	var cfg S
+	r.Error(json.Unmarshal([]byte(`{"val":42}`), &cfg))
+	r.False(cfg.Val.IsValid())
+}
 
-		if err := yaml.Unmarshal([]byte("val: 89"), &cfg); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if v := cfg.Val.Value(); v != 89 {
-			t.Fatalf("got %v, want 89", v)
-		}
-	})
+// Every failing rule is reported, not just the first.
+func TestCollectAllRules(t *testing.T) {
+	r := require.New(t)
+	cfg := struct {
+		Val conform.Int[int8] `json:"val"`
+	}{Val: conform.NewInt(conform.Min[int8](10), conform.In[int8](1, 2, 3))}
 
-	t.Run("YAML out of range", func(t *testing.T) {
-		cfg := struct {
-			Val conform.Int[int8] `yaml:"val"`
-		}{Val: conform.NewInt[int8](1, 100)}
+	err := json.Unmarshal([]byte(`{"val":5}`), &cfg)
+	r.Error(err)
+	r.ErrorContains(err, "at least 10")
+	r.ErrorContains(err, "one of")
+}
 
-		if err := yaml.Unmarshal([]byte("val: 120"), &cfg); err == nil {
-			t.Fatal("expected error for out-of-range value, got nil")
-		}
-	})
+// A configured spec with no rules accepts any value.
+func TestNoRules(t *testing.T) {
+	r := require.New(t)
+	cfg := struct {
+		Val conform.Int[int8] `json:"val"`
+	}{Val: conform.NewInt[int8]()}
 
-	t.Run("zero value rejects unmarshal", func(t *testing.T) {
-		var cfg struct {
-			Val conform.Int[int8] `json:"val"`
-		}
-
-		if err := json.Unmarshal([]byte(`{"val": 42}`), &cfg); err == nil {
-			t.Fatal("expected error for uninitialized Int, got nil")
-		}
-		if cfg.Val.IsValid() {
-			t.Fatal("uninitialized Int must not report a valid value")
-		}
-	})
+	r.NoError(json.Unmarshal([]byte(`{"val":42}`), &cfg))
+	r.EqualValues(42, cfg.Val.Value())
 }

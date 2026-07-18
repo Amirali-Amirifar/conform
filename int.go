@@ -2,6 +2,7 @@ package conform
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"gopkg.in/yaml.v3"
 )
@@ -17,9 +18,9 @@ type Int[T IntType] struct {
 	valid bool
 }
 
-func NewInt[T IntType](vMin, vMax T) Int[T] {
+func NewInt[T IntType](rules ...Rule[T]) Int[T] {
 	return Int[T]{
-		spec: NewSpec(vMin, vMax),
+		spec: NewSpec(rules...),
 	}
 }
 
@@ -29,6 +30,7 @@ func (i Int[T]) Parse(v T) (Int[T], error) {
 	}
 	i.value = v
 	i.valid = true
+
 	return i, nil
 }
 
@@ -52,9 +54,15 @@ func (i *Int[T]) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	i.value = parsed.value
-	i.valid = true
+	*i = parsed
 	return nil
+}
+
+func (i Int[T]) MarshalJSON() ([]byte, error) {
+	if !i.valid {
+		return nil, fmt.Errorf("conform: cannot marshal Int with no valid value")
+	}
+	return json.Marshal(i.value)
 }
 
 func (i *Int[T]) UnmarshalYAML(value *yaml.Node) error {
@@ -66,7 +74,13 @@ func (i *Int[T]) UnmarshalYAML(value *yaml.Node) error {
 	if err != nil {
 		return err
 	}
-	i.value = parsed.value
-	i.valid = true
+	*i = parsed
 	return nil
+}
+
+func (i Int[T]) MarshalYAML() (any, error) {
+	if !i.valid {
+		return nil, fmt.Errorf("conform: cannot marshal Int with no valid value")
+	}
+	return i.value, nil
 }

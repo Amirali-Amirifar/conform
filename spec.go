@@ -1,29 +1,25 @@
 package conform
 
-import "fmt"
+import "errors"
 
 type spec[T IntType] struct {
-	min        T
-	max        T
+	rules      []Rule[T]
 	configured bool
 }
 
-func NewSpec[T IntType](vMin, vMax T) spec[T] {
-	if vMin > vMax {
-		panic("conform: vMin must not be greater than vMax")
-	}
-	return spec[T]{min: vMin, max: vMax, configured: true}
+func NewSpec[T IntType](rules ...Rule[T]) spec[T] {
+	return spec[T]{rules: rules, configured: true}
 }
 
 func (s spec[T]) validate(v T) error {
 	if !s.configured {
-		return fmt.Errorf("conform: Int is not initialized; construct it with NewInt")
+		return errors.New("conform: Int is not initialized; construct it with NewInt")
 	}
-	if v < s.min {
-		return fmt.Errorf("got %d but need at least %d", v, s.min)
+	var errs []error
+	for _, r := range s.rules {
+		if err := r(v); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	if v > s.max {
-		return fmt.Errorf("got %d but need at most %d", v, s.max)
-	}
-	return nil
+	return errors.Join(errs...) // nil when errs is empty
 }
