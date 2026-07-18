@@ -3,17 +3,19 @@ package conform
 import "errors"
 
 type spec[T IntType] struct {
-	rules      []Rule[T]
-	configured bool
+	rules []Rule[T]
 }
 
 func NewSpec[T IntType](rules ...Rule[T]) spec[T] {
-	return spec[T]{rules: rules, configured: true}
+	if rules == nil {
+		rules = []Rule[T]{}
+	}
+	return spec[T]{rules: rules}
 }
 
 func (s spec[T]) validate(v T) error {
-	if !s.configured {
-		return errors.New("conform: Int is not initialized; construct it with NewInt")
+	if s.rules == nil {
+		return errors.New("conform: Spec is not initialized; construct it with NewInt")
 	}
 	var errs []error
 	for _, r := range s.rules {
