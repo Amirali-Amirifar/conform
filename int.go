@@ -2,8 +2,10 @@ package conform
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
+	"github.com/amirali-amirifar/conform/predicate"
 	"gopkg.in/yaml.v3"
 )
 
@@ -18,15 +20,17 @@ type Int[T IntType] struct {
 	valid bool
 }
 
-func NewInt[T IntType](rules ...Rule[T]) Int[T] {
+func NewInt[T IntType](root predicate.Node[T]) Int[T] {
 	return Int[T]{
-		spec: NewSpec(rules...),
+		spec: NewSpec(root),
 	}
 }
 
-func (i Int[T]) Parse(v T) (Int[T], error) {
-	if err := i.spec.validate(v); err != nil {
-		return Int[T]{}, err
+// Parse checks v against the spec and returns the populated Int, or the
+// diagnostics explaining why v was rejected. A nil/empty result means success.
+func (i Int[T]) Parse(v T) (Int[T], []predicate.Diagnostic) {
+	if diags := i.spec.validate(v); len(diags) > 0 {
+		return Int[T]{}, diags
 	}
 	i.value = v
 	i.valid = true
@@ -50,9 +54,13 @@ func (i *Int[T]) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	parsed, err := i.Parse(raw)
-	if err != nil {
-		return err
+	parsed, diags := i.Parse(raw)
+	if len(diags) > 0 {
+		errs := make([]error, len(diags))
+		for j, d := range diags {
+			errs[j] = errors.New(d.Message)
+		}
+		return errors.Join(errs...)
 	}
 	*i = parsed
 	return nil
@@ -70,9 +78,13 @@ func (i *Int[T]) UnmarshalYAML(value *yaml.Node) error {
 	if err := value.Decode(&raw); err != nil {
 		return err
 	}
-	parsed, err := i.Parse(raw)
-	if err != nil {
-		return err
+	parsed, diags := i.Parse(raw)
+	if len(diags) > 0 {
+		errs := make([]error, len(diags))
+		for j, d := range diags {
+			errs[j] = errors.New(d.Message)
+		}
+		return errors.Join(errs...)
 	}
 	*i = parsed
 	return nil

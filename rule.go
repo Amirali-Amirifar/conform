@@ -1,36 +1,18 @@
 package conform
 
-import "fmt"
+import "github.com/amirali-amirifar/conform/predicate"
 
-// Rule reports whether v satisfies a constraint. A nil error means it passes.
-type Rule[T any] func(v T) error
-
-func Min[T IntType](min T) Rule[T] {
-	return func(v T) error {
-		if v < min {
-			return fmt.Errorf("got %d but need at least %d", v, min)
-		}
-		return nil
-	}
+// Min requires input >= val.
+func Min[T IntType](val T) predicate.Node[T] {
+	return predicate.NewCmp(predicate.Ge, val)
 }
 
-func Max[T IntType](max T) Rule[T] {
-	return func(v T) error {
-		if v > max {
-			return fmt.Errorf("got %d but need at most %d", v, max)
-		}
-		return nil
-	}
+// Max requires input <= val.
+func Max[T IntType](val T) predicate.Node[T] {
+	return predicate.NewCmp(predicate.Le, val)
 }
 
 // In restricts v to an allow-list of values.
-func In[T IntType](allowed ...T) Rule[T] {
-	return func(v T) error {
-		for _, a := range allowed {
-			if v == a {
-				return nil
-			}
-		}
-		return fmt.Errorf("got %d but need one of %v", v, allowed)
-	}
+func In[T IntType](allowed ...T) predicate.Node[T] {
+	return predicate.NewIn(allowed...)
 }

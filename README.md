@@ -26,7 +26,7 @@ type ServerConfig struct {
 
 func NewServerConfig() ServerConfig {
     return ServerConfig{
-        Workers:  conform.NewInt(conform.Min(1), conform.Max(64)),
+        Workers:  conform.NewInt(predicate.NewAnd(conform.Min(1), conform.Max(64))),
         LogEvery: conform.NewInt(conform.In(1, 10, 100, 1000)),
     }
 }
@@ -42,13 +42,15 @@ workers := cfg.Workers.Value() // plain int, checked against 1..64
 
 A conform type is a box holding rules and, after parsing, a value:
 
-- **The only way in is `Parse`.** It runs the rules and returns an error instead
-of a value when they fail. Deserialization route through it, so for every field
-present in the input, decoding is validating.
+- **The only way in is `Parse`.** It runs the rules and returns diagnostics
+instead of a value when they fail. Deserialization route through it, so for every
+field present in the input, decoding is validating.
 - **Misuse fails loudly.** A zero-value box rejects everything;
 reading an unparsed box panics; marshaling one errors.
-- **Rules are compiled Go**, not strings in tags: `func(v T) error`, written
-next to the field, composed by listing them.
+- **Constraints are compiled Go**, not strings in tags. Written next to the
+field and combined with `predicate.NewAnd`/`NewOr`/`NewNot`, they form a reified
+predicate tree the library can walk — to check a value, report every failure, or
+(later) render and generate code from.
 
 To name an invariant Go has no type for, wrap it:
 
@@ -57,13 +59,38 @@ To name an invariant Go has no type for, wrap it:
 type Percent struct{ conform.Int[int] }
 
 func NewPercent() Percent {
-    return Percent{conform.NewInt(conform.Min(0), conform.Max(100))}
+    return Percent{conform.NewInt(predicate.NewAnd(conform.Min(0), conform.Max(100)))}
 }
 
 func setVolume(p Percent) // the signature states the requirement
 ```
 
 Embedding keeps the unmarshalers, so a `Percent` field still validates itself during decoding.
+
+## Custom rules
+
+The built-in nodes aren't a closed set. A constraint is anything that implements
+`predicate.Node[T]` — a `Validate` method plus a `String` for rendering — so you
+can add your own rule and compose it with the built-ins in the same tree:
+
+```go
+type Even struct{}
+
+func (Even) Validate(v int) []predicate.Diagnostic {
+    if v%2 == 0 {
+        return nil
+    }
+    return []predicate.Diagnostic{{
+        Predicate: "Even",
+        Message:   "got an odd number, need an even one",
+    }}
+}
+
+func (Even) String() string { return "x is even" }
+
+// Compose it with Min just like any built-in node.
+conform.NewInt(predicate.NewAnd(conform.Min(0), Even{}))
+```
 
 ## Status
 

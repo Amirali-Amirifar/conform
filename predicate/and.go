@@ -1,26 +1,25 @@
 package predicate
 
-// Predicates
+import "cmp"
 
-type AndPredicate[T any] struct {
-	preds []Predicate[T]
+// And is satisfied when every child is satisfied.
+type And[T cmp.Ordered] struct {
+	Preds []Node[T]
 }
 
-func And[T any](preds ...Predicate[T]) AndPredicate[T] {
-	return AndPredicate[T]{
-		preds: preds,
+// NewAnd builds an [And] over preds.
+func NewAnd[T cmp.Ordered](preds ...Node[T]) And[T] {
+	return And[T]{Preds: preds}
+}
+
+// Validate reports every child's diagnostics; an empty And is vacuously
+// satisfied.
+func (n And[T]) Validate(v T) []Diagnostic {
+	var diags []Diagnostic
+	for _, p := range n.Preds {
+		diags = append(diags, Validate(p, v)...)
 	}
+	return diags
 }
 
-func (a AndPredicate[T]) Name() string {
-	return "AND"
-}
-
-func (a AndPredicate[T]) Evaluate(in T) bool {
-	for _, p := range a.preds {
-		if diags := p.Evaluate(in); diags != nil {
-			return false
-		}
-	}
-	return true
-}
+func (n And[T]) String() string { return join(n.Preds, " AND ") }

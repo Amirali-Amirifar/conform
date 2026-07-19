@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/amirali-amirifar/conform"
+	"github.com/amirali-amirifar/conform/predicate"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -15,7 +16,7 @@ type S struct {
 
 // newVal builds the spec used across most tests: 1 <= v <= 100.
 func newVal() conform.Int[int8] {
-	return conform.NewInt(conform.Min[int8](1), conform.Max[int8](100))
+	return conform.NewInt(predicate.NewAnd(conform.Min[int8](1), conform.Max[int8](100)))
 }
 
 func TestUnmarshal(t *testing.T) {
@@ -74,7 +75,7 @@ func TestCollectAllRules(t *testing.T) {
 	r := require.New(t)
 	cfg := struct {
 		Val conform.Int[int8] `json:"val"`
-	}{Val: conform.NewInt(conform.Min[int8](10), conform.In[int8](1, 2, 3))}
+	}{Val: conform.NewInt(predicate.NewAnd(conform.Min[int8](10), conform.In[int8](1, 2, 3)))}
 
 	err := json.Unmarshal([]byte(`{"val":5}`), &cfg)
 	r.Error(err)
@@ -82,12 +83,12 @@ func TestCollectAllRules(t *testing.T) {
 	r.ErrorContains(err, "one of")
 }
 
-// A configured spec with no rules accepts any value.
+// A configured spec with a nil root accepts any value.
 func TestNoRules(t *testing.T) {
 	r := require.New(t)
 	cfg := struct {
 		Val conform.Int[int8] `json:"val"`
-	}{Val: conform.NewInt[int8]()}
+	}{Val: conform.NewInt[int8](nil)}
 
 	r.NoError(json.Unmarshal([]byte(`{"val":42}`), &cfg))
 	r.EqualValues(42, cfg.Val.Value())
